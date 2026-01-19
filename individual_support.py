@@ -2,10 +2,7 @@
 
 import pandas as pd
 from pathlib import Path
-from config import (
-    CCL_DIR, CN_DIR, INDIV_DIR, OUT_DIR, VALID_OFFICES, CHUNKSIZE,
-    CCL_COLS, CN_COLS, INDIV_COLS
-)
+from config import TARGET_ELECTION_YR, write_csv_no_blank_line
 
 def _find_file(folder: Path, startswith: str) -> Path:
     for ext in ("*.txt", "*.dat"):
@@ -29,7 +26,21 @@ def _build_cmte_to_cand(ccl: pd.DataFrame) -> dict:
     chosen = ccl.dropna(subset=["CMTE_ID", "CAND_ID"]).drop_duplicates("CMTE_ID", keep="first")
     return dict(zip(chosen["CMTE_ID"], chosen["CAND_ID"]))
 
-def main():
+def main(cfg=None):
+    if cfg is None:
+        from config import CCL_DIR, CN_DIR, INDIV_DIR, OUT_DIR, CCL_COLS, CN_COLS, INDIV_COLS, SUFFIX, VALID_OFFICES, CHUNKSIZE
+    else:
+        CCL_DIR = cfg['CCL_DIR']
+        CN_DIR = cfg['CN_DIR']
+        INDIV_DIR = cfg['INDIV_DIR']
+        OUT_DIR = cfg['OUT_DIR']
+        CCL_COLS = cfg['CCL_COLS']
+        CN_COLS = cfg['CN_COLS']
+        INDIV_COLS = cfg['INDIV_COLS']
+        SUFFIX = cfg['SUFFIX']
+        VALID_OFFICES = cfg['VALID_OFFICES']
+        CHUNKSIZE = cfg['CHUNKSIZE']
+    
     ccl_path = _find_file(CCL_DIR, "ccl")
     cn_path = _find_file(CN_DIR, "cn")
     indiv_path = _find_file(INDIV_DIR, "itcont")
@@ -39,10 +50,16 @@ def main():
     cmte_to_cand = _build_cmte_to_cand(ccl)
 
     print("[individual_support] Loading candidate master:", cn_path)
-    cn = pd.read_csv(cn_path, sep="|", header=None, names=CN_COLS, dtype=str, encoding_errors="ignore")
 
-    # ✅ Restrict universe to Senate + Presidential (no House)
+    cn = pd.read_csv(cn_path, sep="|", header=None, names=CN_COLS, dtype=str, encoding_errors="ignore")
     cn = cn[cn["CAND_OFFICE"].isin(VALID_OFFICES)].copy()
+
+    # Election-year restriction
+    cn["CAND_ELECTION_YR"] = cn["CAND_ELECTION_YR"].astype(str).str.extract(r"(\d{4})", expand=False)
+    before = len(cn)
+    cn = cn[cn["CAND_ELECTION_YR"] == TARGET_ELECTION_YR].copy()
+    print(f"[individual_support] cn after year filter {TARGET_ELECTION_YR}: {before:,} -> {len(cn):,}")
+
     valid_cand_ids = set(cn["CAND_ID"].dropna().unique())
     cn_index = cn.set_index("CAND_ID")
 
@@ -51,7 +68,8 @@ def main():
     print("[individual_support] Streaming itcont:", indiv_path)
     reader = pd.read_csv(
         indiv_path, sep="|", header=None, names=INDIV_COLS,
-        dtype=str, chunksize=CHUNKSIZE, encoding_errors="ignore"
+        dtype=str, chunksize=CHUNKSIZE, encoding_errors="ignore",
+        on_bad_lines="skip"
     )
 
     for i, chunk in enumerate(reader, start=1):
@@ -92,8 +110,8 @@ def main():
           .sort_values("INDIVIDUAL_SUPPORT", ascending=False)
     )
 
-    out_path = OUT_DIR / "individual_support.csv"
-    out.to_csv(out_path, index=False)
+    out_path = OUT_DIR / f"individual_support_{SUFFIX}.csv"
+    write_csv_no_blank_line(out, out_path, index=False)
     print("[individual_support] Wrote:", out_path)
 
 if __name__ == "__main__":

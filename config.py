@@ -5,7 +5,7 @@ import re
 
 # ---- EDIT THESE TWO LINES ONLY ----
 BASE_DIR = Path(r"C:\Users\sruja\Downloads\Data Collection\FEC_Data")
-CYCLE_LABEL = "06"   # e.g., "02", "04", "18", "20" (will expand to 2001_2002, 2003_2004, etc.)
+CYCLE_LABEL = "16"   # e.g., "02", "04", "18", "20" (will expand to 2001_2002, 2003_2004, etc.)
 # ----------------------------------
 
 def _expand_cycle_label(label: str) -> str:
@@ -46,6 +46,7 @@ def _cycle_suffix(cycle_label: str) -> str:
 # Expand the cycle label if needed
 CYCLE_LABEL = _expand_cycle_label(CYCLE_LABEL)
 SUFFIX = _cycle_suffix(CYCLE_LABEL)
+TARGET_ELECTION_YR = str(int("20" + SUFFIX))  # "06"->"2006", "16"->"2016"
 
 CYCLE_DIR = BASE_DIR / CYCLE_LABEL
 CODE_DIR = BASE_DIR / "Code"
@@ -89,3 +90,20 @@ ITPAS2_COLS = [
     "NAME","CITY","STATE","ZIP_CODE","EMPLOYER","OCCUPATION","TRANSACTION_DT","TRANSACTION_AMT",
     "OTHER_ID","CAND_ID","TRAN_ID","FILE_NUM","MEMO_CD","MEMO_TEXT","SUB_ID"
 ]
+
+def write_csv_no_blank_line(df, path, **kwargs):
+    """
+    Write DataFrame to CSV without trailing blank line.
+    """
+    import pandas as pd
+    df.to_csv(path, **kwargs)
+    
+    # Remove trailing blank lines
+    with open(path, 'rb') as f:
+        content = f.read()
+    
+    # Strip all trailing newlines
+    content = content.rstrip(b'\r\n')
+    
+    with open(path, 'wb') as f:
+        f.write(content)

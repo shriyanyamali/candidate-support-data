@@ -2,10 +2,7 @@
 
 import pandas as pd
 from pathlib import Path
-from config import (
-    CM_DIR, CN_DIR, PAS2_DIR, OUT_DIR, VALID_OFFICES, CHUNKSIZE,
-    CM_COLS, CN_COLS, ITPAS2_COLS
-)
+from config import TARGET_ELECTION_YR, write_csv_no_blank_line
 
 def _find_file(folder: Path, startswith: str) -> Path:
     for ext in ("*.txt", "*.dat"):
@@ -17,7 +14,21 @@ def _find_file(folder: Path, startswith: str) -> Path:
         raise FileNotFoundError(f"No data files found in {folder}")
     return max(cands, key=lambda p: p.stat().st_size)
 
-def main():
+def main(cfg=None):
+    if cfg is None:
+        from config import CM_DIR, CN_DIR, PAS2_DIR, OUT_DIR, CM_COLS, CN_COLS, ITPAS2_COLS, SUFFIX, VALID_OFFICES, CHUNKSIZE
+    else:
+        CM_DIR = cfg['CM_DIR']
+        CN_DIR = cfg['CN_DIR']
+        PAS2_DIR = cfg['PAS2_DIR']
+        OUT_DIR = cfg['OUT_DIR']
+        CM_COLS = cfg['CM_COLS']
+        CN_COLS = cfg['CN_COLS']
+        ITPAS2_COLS = cfg['ITPAS2_COLS']
+        SUFFIX = cfg['SUFFIX']
+        VALID_OFFICES = cfg['VALID_OFFICES']
+        CHUNKSIZE = cfg['CHUNKSIZE']
+    
     cm_path = _find_file(CM_DIR, "cm")
     cn_path = _find_file(CN_DIR, "cn")
     itpas2_path = _find_file(PAS2_DIR, "itpas2")
@@ -30,8 +41,14 @@ def main():
     print("[superpac_ie_support] Loading candidate master:", cn_path)
     cn = pd.read_csv(cn_path, sep="|", header=None, names=CN_COLS, dtype=str, encoding_errors="ignore")
 
-    # ✅ Restrict universe to Senate + Presidential (no House)
+    cn = pd.read_csv(cn_path, sep="|", header=None, names=CN_COLS, dtype=str, encoding_errors="ignore")
     cn = cn[cn["CAND_OFFICE"].isin(VALID_OFFICES)].copy()
+
+    cn["CAND_ELECTION_YR"] = cn["CAND_ELECTION_YR"].astype(str).str.extract(r"(\d{4})", expand=False)
+    before = len(cn)
+    cn = cn[cn["CAND_ELECTION_YR"] == TARGET_ELECTION_YR].copy()
+    print(f"[superpac_ie_support] cn after year filter {TARGET_ELECTION_YR}: {before:,} -> {len(cn):,}")
+
     valid_cand_ids = set(cn["CAND_ID"].dropna().unique())
     cn_index = cn.set_index("CAND_ID")
 
@@ -40,7 +57,8 @@ def main():
     print("[superpac_ie_support] Streaming itpas2:", itpas2_path)
     reader = pd.read_csv(
         itpas2_path, sep="|", header=None, names=ITPAS2_COLS,
-        dtype=str, chunksize=CHUNKSIZE, encoding_errors="ignore"
+        dtype=str, chunksize=CHUNKSIZE, encoding_errors="ignore",
+        on_bad_lines="skip"
     )
 
     for i, chunk in enumerate(reader, start=1):
@@ -81,8 +99,8 @@ def main():
           .sort_values("SUPERPAC_IE_SUPPORT", ascending=False)
     )
 
-    out_path = OUT_DIR / "superpac_ie_support.csv"
-    out.to_csv(out_path, index=False)
+    out_path = OUT_DIR / f"superpac_ie_support_{SUFFIX}.csv"
+    write_csv_no_blank_line(out, out_path, index=False)
     print("[superpac_ie_support] Wrote:", out_path)
 
 if __name__ == "__main__":
