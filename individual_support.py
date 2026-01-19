@@ -91,7 +91,7 @@ def main(office_filter=None, cfg=None):
     )
 
     for i, chunk in enumerate(reader, start=1):
-        chunk = chunk[(chunk["TRANSACTION_TP"] == "15") & (chunk["ENTITY_TP"] == "IND")].copy()
+        chunk = chunk[(chunk["TRANSACTION_TP"].isin(["15", "15E"])) & (chunk["ENTITY_TP"] == "IND")].copy()
         if chunk.empty:
             continue
 
